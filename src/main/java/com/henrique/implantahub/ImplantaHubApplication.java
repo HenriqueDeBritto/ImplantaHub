@@ -1,4 +1,4 @@
-package com.henrique.ImplantaHub;
+package com.henrique.implantahub;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
