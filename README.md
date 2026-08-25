@@ -202,7 +202,7 @@ target/
 * [x] Git
 * [x] Dependências de persistência
 * [x] Estrutura inicial do Docker Compose
-* [ ] PostgreSQL local em execução
+* [x] PostgreSQL local em execução
 * [ ] Configuração do datasource
 * [ ] Primeira migration Flyway
 
