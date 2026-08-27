@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: implantahub
+      POSTGRES_USER: implantahub
+      POSTGRES_PASSWORD: implantahub
+    ports:
+      - "5432:5432"
+    volumes:
+      - implantahub_pgdata:/var/lib/postgresql/data
+
+volumes:
+  implantahub_pgdata:
