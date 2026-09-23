@@ -1,0 +1,38 @@
+
+### TESTE 1 — Cadastrar um cliente novo
+POST http://localhost:8080/api/clients
+Content-Type: application/json
+
+{
+  "corporateName": "Empresa Teste Integracao",
+  "tradeName": "Teste Integracao",
+  "cnpj": "73928416000152",
+  "email": "integracao@exemplo.com",
+  "phone": "11999999999"
+}
+
+
+### TESTE 2 — Tentar cadastrar o mesmo CNPJ
+POST http://localhost:8080/api/clients
+Content-Type: application/json
+
+{
+  "corporateName": "Outra Empresa Teste",
+  "tradeName": "Outra Empresa",
+  "cnpj": "73928416000152",
+  "email": "outra@exemplo.com",
+  "phone": "11988888888"
+}
+
+
+### TESTE 3 — Enviar dados inválidos
+POST http://localhost:8080/api/clients
+Content-Type: application/json
+
+{
+  "corporateName": "Empresa Invalida",
+  "tradeName": "Teste",
+  "cnpj": "",
+  "email": "email-invalido",
+  "phone": "11999999999"
+}
