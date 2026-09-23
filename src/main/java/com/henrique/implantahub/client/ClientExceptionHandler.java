@@ -28,6 +28,18 @@ public class ClientExceptionHandler {
         return problemDetail;
     }
 
+    @ExceptionHandler(ClientNotFoundException.class)
+    public ProblemDetail handleClientNotFound(ClientNotFoundException ex) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND,
+                "Client not found."
+        );
+
+        problemDetail.setTitle("Client Not Found");
+
+        return problemDetail;
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
