@@ -203,19 +203,19 @@ target/
 * [x] Dependências de persistência
 * [x] Estrutura inicial do Docker Compose
 * [x] PostgreSQL local em execução
-* [ ] Configuração do datasource
-* [ ] Primeira migration Flyway
+* [x] Configuração do datasource
+* [x] Primeira migration Flyway
 
 ### Domínio Client
 
-* [ ] Entidade Client
-* [ ] ClientStatus
-* [ ] ClientRepository
-* [ ] DTOs
-* [ ] ClientService
-* [ ] tratamento de exceções
-* [ ] ClientController
-* [ ] testes
+* [x] Entidade Client
+* [x] ClientStatus
+* [x] ClientRepository
+* [x] DTOs
+* [x] ClientService
+* [x] tratamento de exceções
+* [x] ClientController
+* [x] testes
 
 ### Futuro
 
