@@ -1,4 +1,3 @@
-
 # ImplantaHub
 
 Backend para gerenciamento de processos de implantação de software e suporte a clientes, desenvolvido em Java com Spring Boot.
@@ -57,7 +56,7 @@ O projeto segue uma arquitetura de monólito modular, organizada principalmente 
 
 A proposta é manter os componentes relacionados a cada funcionalidade próximos uns dos outros, evitando uma organização excessivamente fragmentada durante os estágios iniciais do desenvolvimento.
 
-O domínio de clientes, por exemplo, reúne entidade, Repository, Service, DTOs, Controller e tratamento de exceções dentro do pacote `client`.
+O domínio de clientes, por exemplo, reúne entidade, Repository, Service, DTOs, Controller, exceções de domínio e tratamento de exceções HTTP dentro do pacote `client`.
 
 As principais responsabilidades são:
 
@@ -66,6 +65,7 @@ As principais responsabilidades são:
 - **Repository:** realizar as operações de persistência por meio do Spring Data JPA;
 - **Entity:** representar os dados persistidos e o estado do domínio;
 - **DTOs:** definir os contratos de entrada e saída da API;
+- **Exceções de domínio:** representar situações de negócio, como CNPJ duplicado ou cliente inexistente, sem dependência de HTTP;
 - **Exception Handler:** traduzir exceções específicas em respostas HTTP apropriadas.
 
 O projeto não utiliza microsserviços neste estágio.
@@ -84,6 +84,7 @@ src/
 │   │   │   ├── Client.java
 │   │   │   ├── ClientController.java
 │   │   │   ├── ClientExceptionHandler.java
+│   │   │   ├── ClientNotFoundException.java
 │   │   │   ├── ClientRepository.java
 │   │   │   ├── ClientResponse.java
 │   │   │   ├── ClientService.java
@@ -196,7 +197,7 @@ Exemplo ilustrativo de resposta:
 
 O identificador é gerado pelo PostgreSQL. Os campos `createdAt` e `updatedAt` registram os timestamps do cadastro.
 
-Ainda não existe um endpoint de consulta por ID. Por isso, a resposta de criação não inclui o cabeçalho `Location`.
+A resposta de criação ainda não inclui o cabeçalho `Location`.
 
 #### CNPJ duplicado
 
@@ -260,6 +261,65 @@ As mensagens de validação podem variar conforme a implementação do validador
 A propriedade `errors` utiliza listas de mensagens para permitir que um mesmo campo apresente múltiplas violações sem perder informações.
 
 Os valores rejeitados não são reproduzidos no corpo da resposta.
+
+### Consulta de cliente por ID
+
+A API permite consultar um cliente pelo identificador.
+
+```http
+GET /api/clients/{id}
+```
+
+O identificador é recebido pelo Controller com `@PathVariable("id")`, e a consulta é delegada ao `ClientService.findById`, que utiliza `@Transactional(readOnly = true)`.
+
+#### Cliente encontrado
+
+Quando o cliente existe, a API retorna:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+Exemplo ilustrativo de resposta:
+
+```json
+{
+  "id": 1,
+  "corporateName": "Empresa Exemplo Ltda",
+  "tradeName": "Empresa Exemplo",
+  "cnpj": "12345678000199",
+  "email": "contato@exemplo.com",
+  "phone": "11999999999",
+  "status": "ACTIVE",
+  "createdAt": "2026-09-23T15:00:00Z",
+  "updatedAt": "2026-09-23T15:00:00Z"
+}
+```
+
+O corpo utiliza o mesmo contrato `ClientResponse` do cadastro. A entidade JPA não é exposta diretamente.
+
+#### Cliente não encontrado
+
+Quando não existe cliente com o ID informado, o `ClientService` lança `ClientNotFoundException`, uma exceção de domínio sem dependência de HTTP. O `ClientExceptionHandler` a traduz para:
+
+```http
+HTTP/1.1 404 Not Found
+Content-Type: application/problem+json
+```
+
+Exemplo de resposta:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Client Not Found",
+  "status": 404,
+  "detail": "Client not found."
+}
+```
+
+A resposta pública não reproduz a mensagem interna da exceção. O Spring pode acrescentar a propriedade `instance`, contendo o caminho da requisição.
 
 ## Banco de dados
 
@@ -390,23 +450,26 @@ O repositório contém o arquivo:
 http/clients.http
 ```
 
-Ele reúne exemplos de requisições para o endpoint de cadastro de clientes, incluindo:
+Ele reúne exemplos de requisições para os endpoints de clientes, incluindo:
 
 1. Cadastro válido;
 2. Tentativa de cadastro com CNPJ duplicado;
-3. Requisição com dados inválidos.
+3. Requisição com dados inválidos;
+4. Consulta de cliente por ID.
 
 No IntelliJ IDEA Ultimate, abra o arquivo e utilize os botões de execução ao lado de cada requisição.
 
 Com a aplicação e o PostgreSQL em execução, os resultados esperados são:
 
-| Cenário | Status HTTP |
-|---|---|
-| Cadastro bem-sucedido | 201 Created |
-| CNPJ duplicado | 409 Conflict |
-| Dados inválidos | 400 Bad Request |
+| Cenário | Requisição | Status HTTP |
+|---|---|---|
+| Cadastro bem-sucedido | `POST /api/clients` | 201 Created |
+| CNPJ duplicado | `POST /api/clients` | 409 Conflict |
+| Dados inválidos | `POST /api/clients` | 400 Bad Request |
+| Cliente existente | `GET /api/clients/{id}` | 200 OK |
+| Cliente inexistente | `GET /api/clients/{id}` | 404 Not Found |
 
-**Importante:** após executar o primeiro cadastro, repetir a mesma requisição com o mesmo CNPJ deverá retornar `409 Conflict`. Para repetir o cenário de criação bem-sucedida, utilize um CNPJ de 14 dígitos ainda não cadastrado no ambiente local.
+**Importante:** após executar o primeiro cadastro, repetir a mesma requisição com o mesmo CNPJ deverá retornar `409 Conflict`. Para repetir o cenário de criação bem-sucedida, utilize um CNPJ de 14 dígitos ainda não cadastrado no ambiente local. Para consultar um cliente, utilize o `id` retornado no cadastro.
 
 ### Conferindo a persistência
 
@@ -416,7 +479,9 @@ Com a aplicação e o PostgreSQL em execução, os resultados esperados são:
 docker compose exec postgres psql -U implantahub -d implantahub -c "SELECT id, corporate_name, cnpj, status, created_at, updated_at FROM clients;"
 ```
 
-O fluxo de cadastro já foi validado manualmente, confirmando:
+### Verificações manuais realizadas
+
+O fluxo de cadastro foi validado manualmente com a aplicação e o PostgreSQL reais, confirmando:
 
 - Criação de cliente com resposta `201 Created`;
 - Geração do identificador pelo banco;
@@ -425,15 +490,22 @@ O fluxo de cadastro já foi validado manualmente, confirmando:
 - Ausência de registros duplicados após repetir o cadastro;
 - Resposta `400 Bad Request` para dados inválidos.
 
-Essa verificação foi realizada manualmente com a aplicação e o banco reais. Ela ainda não constitui uma suíte automatizada de testes de integração.
+A consulta por ID também foi verificada manualmente no navegador, com a aplicação e o PostgreSQL reais:
+
+- Um ID existente retornou os dados corretos do cliente;
+- Um ID inexistente retornou `404 Not Found`.
+
+Essas verificações foram manuais. Elas não constituem uma suíte automatizada de testes de integração.
 
 ## Testes automatizados
 
 O projeto utiliza JUnit 5, Mockito, AssertJ e MockMvc.
 
+Os testes específicos de `ClientService` e `ClientController` não acessam o PostgreSQL: o Service é testado com um Repository mockado, e o Controller é testado com um Service mockado. Já o `ImplantaHubApplicationTests` carrega o contexto completo da aplicação, incluindo a configuração de persistência e o Flyway, e depende do PostgreSQL local disponível. Esse teste verifica a inicialização do contexto, mas não substitui testes automatizados das operações reais de persistência.
+
 ### Testes do ClientService
 
-A classe `ClientServiceTest` executa testes unitários isolados, utilizando um mock de `ClientRepository`.
+A classe `ClientServiceTest` executa quatro testes unitários isolados, utilizando um mock de `ClientRepository`.
 
 Os cenários implementados verificam:
 
@@ -443,25 +515,30 @@ Os cenários implementados verificam:
 - Persistência por meio do Repository;
 - Conversão para `ClientResponse`;
 - Lançamento de `DuplicateCnpjException` quando o CNPJ já existe;
-- Garantia de que `save()` não é chamado no cenário de duplicidade.
+- Garantia de que `save()` não é chamado no cenário de duplicidade;
+- Consulta de cliente existente por ID, com conversão dos dados para `ClientResponse` e ausência de operações de escrita;
+- Lançamento de `ClientNotFoundException` quando o ID não existe, sem operações de escrita.
 
-Esses testes não acessam o banco de dados.
+Como o Service é instanciado diretamente pelo Mockito, sem proxy do Spring, esses testes não comprovam o comportamento transacional de `@Transactional(readOnly = true)`.
 
 ### Testes do ClientController
 
-A classe `ClientControllerTest` utiliza `@WebMvcTest`, MockMvc e um mock do `ClientService` para validar a camada HTTP.
+A classe `ClientControllerTest` executa cinco testes HTTP, utilizando `@WebMvcTest`, MockMvc e um mock do `ClientService`.
 
 Os cenários implementados verificam:
 
 - Resposta `201 Created` para uma requisição válida;
 - Resposta `409 Conflict` para CNPJ duplicado;
 - Resposta `400 Bad Request` para dados inválidos;
+- Resposta `200 OK` para `GET /api/clients/{id}` com cliente existente;
+- Resposta `404 Not Found` para `GET /api/clients/{id}` com cliente inexistente;
 - Serialização do `ClientResponse`;
-- Utilização de `ProblemDetail` nos erros;
+- Utilização de `ProblemDetail` e `application/problem+json` nos erros;
+- Título e detalhe públicos do erro 404;
 - Preservação de múltiplas mensagens de validação por campo;
 - Ausência de chamada ao Service quando a validação falha.
 
-Os testes utilizam a configuração MVC do Spring sem conectar ao PostgreSQL.
+Esses testes utilizam a configuração MVC do Spring, incluindo o `ClientExceptionHandler`, sem conectar ao PostgreSQL.
 
 ### Executando os testes
 
@@ -484,8 +561,6 @@ Para executar toda a suíte:
 ```
 
 A suíte também contém um teste de inicialização do contexto da aplicação. Com a configuração atual, mantenha o PostgreSQL local disponível ao executar a suíte completa.
-
-Os testes unitários e HTTP já foram executados com sucesso.
 
 A implementação de testes de integração automatizados com Testcontainers está planejada para uma etapa futura.
 
@@ -544,16 +619,18 @@ target/
 - [x] Tratamento de CNPJ duplicado na aplicação;
 - [x] ClientController;
 - [x] Endpoint POST /api/clients;
-- [x] Tratamento HTTP de erros de negócio;
+- [x] Endpoint GET /api/clients/{id};
+- [x] ClientNotFoundException;
+- [x] Tratamento HTTP de erros de negócio (409 e 404);
 - [x] Tratamento HTTP de erros de validação;
 - [x] Testes unitários do Service;
 - [x] Testes HTTP do Controller;
 - [x] Exemplos de requisições em clients.http;
-- [x] Verificação manual de persistência no PostgreSQL.
+- [x] Verificação manual de persistência e consulta no PostgreSQL.
 
 ### Próximas melhorias do domínio Client
 
-- [ ] Consulta de clientes;
+- [ ] Listagem de clientes;
 - [ ] Atualização de clientes;
 - [ ] Desativação de clientes;
 - [ ] Validação matemática do CNPJ;

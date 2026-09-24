@@ -19,6 +19,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -164,5 +165,62 @@ class ClientControllerTest {
                 ));
 
         verifyNoInteractions(clientService);
+    }
+
+    @Test
+    void deveRetornar200QuandoClienteForEncontradoPorId() throws Exception {
+        Instant createdAt = Instant.parse("2026-09-23T10:00:00Z");
+        Instant updatedAt = Instant.parse("2026-09-23T11:30:00Z");
+
+        ClientResponse mockedResponse = new ClientResponse(
+                42L,
+                "Acme Sistemas Ltda",
+                "Acme",
+                "12345678000199",
+                "contato@acme.com",
+                "11999999999",
+                ClientStatus.ACTIVE,
+                createdAt,
+                updatedAt
+        );
+
+        when(clientService.findById(42L))
+                .thenReturn(mockedResponse);
+
+        mockMvc.perform(get("/api/clients/42"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON
+                ))
+                .andExpect(jsonPath("$.id").value(42))
+                .andExpect(jsonPath("$.corporateName").value("Acme Sistemas Ltda"))
+                .andExpect(jsonPath("$.tradeName").value("Acme"))
+                .andExpect(jsonPath("$.cnpj").value("12345678000199"))
+                .andExpect(jsonPath("$.email").value("contato@acme.com"))
+                .andExpect(jsonPath("$.phone").value("11999999999"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.createdAt").exists())
+                .andExpect(jsonPath("$.updatedAt").exists());
+
+        verify(clientService, times(1))
+                .findById(42L);
+    }
+
+    @Test
+    void deveRetornar404QuandoClienteNaoExistir() throws Exception {
+        when(clientService.findById(999999L))
+                .thenThrow(new ClientNotFoundException(999999L));
+
+        mockMvc.perform(get("/api/clients/999999"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.title").value("Client Not Found"))
+                .andExpect(jsonPath("$.detail").value("Client not found."));
+
+        verify(clientService, times(1))
+                .findById(999999L);
     }
 }

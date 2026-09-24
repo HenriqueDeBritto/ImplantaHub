@@ -1,3 +1,4 @@
+
 package com.henrique.implantahub.client;
 
 import org.springframework.stereotype.Service;
@@ -30,6 +31,14 @@ public class ClientService {
         Client savedClient = clientRepository.save(client);
 
         return toResponse(savedClient);
+    }
+
+    @Transactional(readOnly = true)
+    public ClientResponse findById(Long id) {
+        Client client = clientRepository.findById(id)
+                .orElseThrow(() -> new ClientNotFoundException(id));
+
+        return toResponse(client);
     }
 
     private ClientResponse toResponse(Client client) {
