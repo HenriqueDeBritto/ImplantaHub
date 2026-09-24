@@ -36,3 +36,14 @@ Content-Type: application/json
   "email": "email-invalido",
   "phone": "11999999999"
 }
+
+
+### Consultar um cliente existente
+GET http://localhost:8080/api/clients/1
+Accept: application/json
+
+###
+
+### Consultar um cliente inexistente
+GET http://localhost:8080/api/clients/999999
+Accept: application/json
