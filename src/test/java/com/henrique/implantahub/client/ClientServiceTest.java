@@ -8,7 +8,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -201,5 +208,99 @@ class ClientServiceTest {
                 .existsByCnpj(anyString());
 
         verifyNoMoreInteractions(clientRepository);
+    }
+
+    @Test
+    void deveRetornarPaginaDeClientesComMetadados() {
+        Pageable pageable =
+                PageRequest.of(1, 2, Sort.by("corporateName"));
+
+        Client alpha = new Client(
+                "Alpha Sistemas Ltda", "Alpha", "11111111000111",
+                "contato@alpha.com", null, ClientStatus.ACTIVE
+        );
+
+        Client beta = new Client(
+                "Beta Software Ltda", "Beta", "22222222000122",
+                "contato@beta.com", null, ClientStatus.INACTIVE
+        );
+
+        when(clientRepository.findAll(any(Pageable.class)))
+                .thenAnswer(invocation -> new PageImpl<>(
+                        List.of(alpha, beta),
+                        invocation.getArgument(0),
+                        5
+                ));
+
+        ClientPageResponse response = clientService.findAll(pageable);
+
+        assertThat(response.content())
+                .extracting(ClientResponse::corporateName)
+                .containsExactly("Alpha Sistemas Ltda", "Beta Software Ltda");
+
+        assertThat(response.content())
+                .extracting(ClientResponse::status)
+                .containsExactly(ClientStatus.ACTIVE, ClientStatus.INACTIVE);
+
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(2);
+        assertThat(response.totalElements()).isEqualTo(5);
+        assertThat(response.totalPages()).isEqualTo(3);
+        assertThat(response.first()).isFalse();
+        assertThat(response.last()).isFalse();
+
+        ArgumentCaptor<Pageable> pageableCaptor =
+                ArgumentCaptor.forClass(Pageable.class);
+
+        verify(clientRepository).findAll(pageableCaptor.capture());
+
+        Pageable sentToRepository = pageableCaptor.getValue();
+
+        assertThat(sentToRepository.getPageNumber()).isEqualTo(1);
+        assertThat(sentToRepository.getPageSize()).isEqualTo(2);
+
+        // O id é acrescentado como critério de desempate.
+        assertThat(sentToRepository.getSort())
+                .isEqualTo(Sort.by("corporateName").and(Sort.by("id")));
+
+        verifyNoMoreInteractions(clientRepository);
+    }
+
+    @Test
+    void naoDeveDuplicarOrdenacaoPorIdQuandoJaInformada() {
+        Pageable pageable =
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "id"));
+
+        when(clientRepository.findAll(any(Pageable.class)))
+                .thenReturn(Page.empty(pageable));
+
+        clientService.findAll(pageable);
+
+        ArgumentCaptor<Pageable> pageableCaptor =
+                ArgumentCaptor.forClass(Pageable.class);
+
+        verify(clientRepository).findAll(pageableCaptor.capture());
+
+        assertThat(pageableCaptor.getValue().getSort())
+                .isEqualTo(Sort.by(Sort.Direction.DESC, "id"));
+    }
+
+    @Test
+    void deveRetornarPaginaVaziaQuandoNaoExistemClientes() {
+        Pageable pageable = PageRequest.of(0, 20);
+
+        when(clientRepository.findAll(any(Pageable.class)))
+                .thenAnswer(invocation ->
+                        Page.empty(invocation.getArgument(0)));
+
+        ClientPageResponse response = clientService.findAll(pageable);
+
+        assertThat(response.content()).isEmpty();
+        assertThat(response.page()).isZero();
+        assertThat(response.size()).isEqualTo(20);
+        assertThat(response.totalElements()).isZero();
+        assertThat(response.totalPages()).isZero();
+        assertThat(response.first()).isTrue();
+        assertThat(response.last()).isTrue();
     }
 }
