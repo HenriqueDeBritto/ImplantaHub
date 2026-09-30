@@ -2,6 +2,8 @@
 package com.henrique.implantahub.client;
 
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +32,16 @@ public class ClientController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
+    }
+
+    @GetMapping
+    public ResponseEntity<ClientPageResponse> findAll(
+            @PageableDefault(size = 20, sort = "corporateName")
+            Pageable pageable
+    ) {
+        ClientPageResponse response = clientService.findAll(pageable);
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")

@@ -40,6 +40,22 @@ public class ClientExceptionHandler {
         return problemDetail;
     }
 
+    @ExceptionHandler(InvalidClientSortException.class)
+    public ProblemDetail handleInvalidSort(InvalidClientSortException ex) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "One or more sort properties are not supported."
+        );
+
+        problemDetail.setTitle("Invalid Sort Property");
+        problemDetail.setProperty(
+                "allowedSortProperties",
+                ClientService.SORTABLE_PROPERTIES
+        );
+
+        return problemDetail;
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
