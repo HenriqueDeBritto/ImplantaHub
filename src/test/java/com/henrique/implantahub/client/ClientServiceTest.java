@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -283,6 +284,19 @@ class ClientServiceTest {
 
         assertThat(pageableCaptor.getValue().getSort())
                 .isEqualTo(Sort.by(Sort.Direction.DESC, "id"));
+    }
+
+    @Test
+    void deveLancarInvalidClientSortExceptionQuandoCampoNaoPermitido() {
+        Pageable pageable = PageRequest.of(
+                0, 20, Sort.by("corporateName", "cnpj")
+        );
+
+        assertThatThrownBy(() -> clientService.findAll(pageable))
+                .isInstanceOf(InvalidClientSortException.class)
+                .hasMessageContaining("cnpj");
+
+        verifyNoInteractions(clientRepository);
     }
 
     @Test

@@ -8,8 +8,18 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 public class ClientService {
+
+    static final List<String> SORTABLE_PROPERTIES = List.of(
+            "id",
+            "corporateName",
+            "tradeName",
+            "createdAt",
+            "updatedAt"
+    );
 
     private final ClientRepository clientRepository;
 
@@ -47,11 +57,21 @@ public class ClientService {
 
     @Transactional(readOnly = true)
     public ClientPageResponse findAll(Pageable pageable) {
+        validateSort(pageable.getSort());
+
         Page<ClientResponse> page = clientRepository
                 .findAll(withIdTiebreaker(pageable))
                 .map(this::toResponse);
 
         return ClientPageResponse.from(page);
+    }
+
+    private void validateSort(Sort sort) {
+        for (Sort.Order order : sort) {
+            if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
+                throw new InvalidClientSortException(order.getProperty());
+            }
+        }
     }
 
     // Garante uma ordem determinística entre páginas quando o campo

@@ -313,6 +313,25 @@ class ClientControllerTest {
         assertThat(capturePageable().getPageSize()).isEqualTo(100);
     }
 
+    @Test
+    void deveRetornar400QuandoOrdenacaoNaoForPermitida() throws Exception {
+        when(clientService.findAll(any(Pageable.class)))
+                .thenThrow(new InvalidClientSortException("cnpj"));
+
+        mockMvc.perform(get("/api/clients").param("sort", "cnpj"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Invalid Sort Property"))
+                .andExpect(jsonPath("$.detail").value(
+                        "One or more sort properties are not supported."
+                ))
+                .andExpect(jsonPath("$.allowedSortProperties").isArray())
+                .andExpect(content().string(not(containsString("cnpj"))));
+    }
+
     private ClientPageResponse emptyPage() {
         return new ClientPageResponse(List.of(), 0, 20, 0, 0, true, true);
     }
