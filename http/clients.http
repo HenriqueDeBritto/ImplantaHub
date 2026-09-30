@@ -47,3 +47,21 @@ Accept: application/json
 ### Consultar um cliente inexistente
 GET http://localhost:8080/api/clients/999999
 Accept: application/json
+
+###
+
+### Listar clientes (paginação padrão: page=0, size=20, sort=corporateName,asc)
+GET http://localhost:8080/api/clients
+Accept: application/json
+
+###
+
+### Listar clientes com paginação e ordenação personalizadas
+GET http://localhost:8080/api/clients?page=0&size=5&sort=createdAt,desc
+Accept: application/json
+
+###
+
+### Listar clientes com ordenação não permitida (espera 400)
+GET http://localhost:8080/api/clients?sort=cnpj
+Accept: application/json

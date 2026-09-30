@@ -85,12 +85,14 @@ src/
 │   │   │   ├── ClientController.java
 │   │   │   ├── ClientExceptionHandler.java
 │   │   │   ├── ClientNotFoundException.java
+│   │   │   ├── ClientPageResponse.java
 │   │   │   ├── ClientRepository.java
 │   │   │   ├── ClientResponse.java
 │   │   │   ├── ClientService.java
 │   │   │   ├── ClientStatus.java
 │   │   │   ├── CreateClientRequest.java
-│   │   │   └── DuplicateCnpjException.java
+│   │   │   ├── DuplicateCnpjException.java
+│   │   │   └── InvalidClientSortException.java
 │   │   │
 │   │   └── health/
 │   │       └── HealthController.java
@@ -321,6 +323,86 @@ Exemplo de resposta:
 
 A resposta pública não reproduz a mensagem interna da exceção. O Spring pode acrescentar a propriedade `instance`, contendo o caminho da requisição.
 
+### Listagem paginada de clientes
+
+A API permite listar clientes de forma paginada e ordenada.
+
+```http
+GET /api/clients?page=0&size=20&sort=corporateName,asc
+```
+
+| Parâmetro | Padrão | Descrição |
+|---|---|---|
+| page | `0` | Número da página, iniciando em zero |
+| size | `20` | Quantidade de itens por página; máximo de 100 |
+| sort | `corporateName,asc` | Campo e direção da ordenação; pode ser repetido |
+
+O `Pageable` é resolvido pelo Spring Data a partir dos parâmetros da URL. Valores de `size` acima de 100 são limitados a 100 pela propriedade `spring.data.web.pageable.max-page-size`, evitando que uma única requisição carregue a tabela inteira.
+
+Campos aceitos em `sort`: `id`, `corporateName`, `tradeName`, `createdAt` e `updatedAt`.
+
+O `ClientService` acrescenta `id` como critério de desempate quando ele não foi informado. Assim, clientes com o mesmo valor no campo ordenado mantêm uma ordem estável entre as páginas.
+
+#### Página retornada
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+
+Exemplo ilustrativo de resposta:
+
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "corporateName": "Empresa Exemplo Ltda",
+      "tradeName": "Empresa Exemplo",
+      "cnpj": "12345678000199",
+      "email": "contato@exemplo.com",
+      "phone": "11999999999",
+      "status": "ACTIVE",
+      "createdAt": "2026-09-23T15:00:00Z",
+      "updatedAt": "2026-09-23T15:00:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+A resposta utiliza o record `ClientPageResponse`, em vez de serializar diretamente o `Page` do Spring Data. Isso mantém o contrato da API explícito e independente da estrutura interna do framework.
+
+Uma página além do total de registros retorna `200 OK` com `content` vazio.
+
+#### Ordenação não permitida
+
+Quando `sort` referencia um campo fora da lista aceita, o `ClientService` lança `InvalidClientSortException` antes de consultar o banco. Sem essa verificação, o Spring Data lançaria uma exceção interna e a API responderia `500 Internal Server Error`.
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/problem+json
+```
+
+Exemplo de resposta:
+
+```json
+{
+  "title": "Invalid Sort Property",
+  "status": 400,
+  "detail": "One or more sort properties are not supported.",
+  "instance": "/api/clients",
+  "allowedSortProperties": ["id", "corporateName", "tradeName", "createdAt", "updatedAt"]
+}
+```
+
+O valor rejeitado não é reproduzido na resposta.
+
 ## Banco de dados
 
 O ImplantaHub utiliza PostgreSQL 17, executado localmente por meio do Docker Compose.
@@ -455,7 +537,8 @@ Ele reúne exemplos de requisições para os endpoints de clientes, incluindo:
 1. Cadastro válido;
 2. Tentativa de cadastro com CNPJ duplicado;
 3. Requisição com dados inválidos;
-4. Consulta de cliente por ID.
+4. Consulta de cliente por ID;
+5. Listagem paginada, com ordenação válida e inválida.
 
 No IntelliJ IDEA Ultimate, abra o arquivo e utilize os botões de execução ao lado de cada requisição.
 
@@ -468,6 +551,8 @@ Com a aplicação e o PostgreSQL em execução, os resultados esperados são:
 | Dados inválidos | `POST /api/clients` | 400 Bad Request |
 | Cliente existente | `GET /api/clients/{id}` | 200 OK |
 | Cliente inexistente | `GET /api/clients/{id}` | 404 Not Found |
+| Listagem paginada | `GET /api/clients` | 200 OK |
+| Ordenação não permitida | `GET /api/clients?sort=cnpj` | 400 Bad Request |
 
 **Importante:** após executar o primeiro cadastro, repetir a mesma requisição com o mesmo CNPJ deverá retornar `409 Conflict`. Para repetir o cenário de criação bem-sucedida, utilize um CNPJ de 14 dígitos ainda não cadastrado no ambiente local. Para consultar um cliente, utilize o `id` retornado no cadastro.
 
@@ -495,6 +580,13 @@ A consulta por ID também foi verificada manualmente no navegador, com a aplica�
 - Um ID existente retornou os dados corretos do cliente;
 - Um ID inexistente retornou `404 Not Found`.
 
+A listagem paginada foi verificada com requisições HTTP à aplicação e ao PostgreSQL reais:
+
+- A listagem sem parâmetros retornou `page` 0, `size` 20 e ordenação por `corporateName`;
+- Uma página além do total retornou `content` vazio com os metadados corretos;
+- `size=500` foi limitado a 100;
+- `sort=cnpj` e `sort=foo,desc` retornaram `400 Bad Request`.
+
 Essas verificações foram manuais. Elas não constituem uma suíte automatizada de testes de integração.
 
 ## Testes automatizados
@@ -505,7 +597,7 @@ Os testes específicos de `ClientService` e `ClientController` não acessam o Po
 
 ### Testes do ClientService
 
-A classe `ClientServiceTest` executa quatro testes unitários isolados, utilizando um mock de `ClientRepository`.
+A classe `ClientServiceTest` executa oito testes unitários isolados, utilizando um mock de `ClientRepository`.
 
 Os cenários implementados verificam:
 
@@ -517,13 +609,17 @@ Os cenários implementados verificam:
 - Lançamento de `DuplicateCnpjException` quando o CNPJ já existe;
 - Garantia de que `save()` não é chamado no cenário de duplicidade;
 - Consulta de cliente existente por ID, com conversão dos dados para `ClientResponse` e ausência de operações de escrita;
-- Lançamento de `ClientNotFoundException` quando o ID não existe, sem operações de escrita.
+- Lançamento de `ClientNotFoundException` quando o ID não existe, sem operações de escrita;
+- Listagem paginada com conversão para `ClientResponse` e metadados da página;
+- Inclusão de `id` como critério de desempate, sem duplicá-lo quando já informado;
+- Lançamento de `InvalidClientSortException` para campos de ordenação não permitidos, sem consultar o Repository;
+- Retorno de página vazia quando não existem clientes.
 
 Como o Service é instanciado diretamente pelo Mockito, sem proxy do Spring, esses testes não comprovam o comportamento transacional de `@Transactional(readOnly = true)`.
 
 ### Testes do ClientController
 
-A classe `ClientControllerTest` executa cinco testes HTTP, utilizando `@WebMvcTest`, MockMvc e um mock do `ClientService`.
+A classe `ClientControllerTest` executa dez testes HTTP, utilizando `@WebMvcTest`, MockMvc e um mock do `ClientService`.
 
 Os cenários implementados verificam:
 
@@ -532,6 +628,11 @@ Os cenários implementados verificam:
 - Resposta `400 Bad Request` para dados inválidos;
 - Resposta `200 OK` para `GET /api/clients/{id}` com cliente existente;
 - Resposta `404 Not Found` para `GET /api/clients/{id}` com cliente inexistente;
+- Resposta `200 OK` para `GET /api/clients` com o conteúdo e os metadados da página;
+- Paginação padrão (página 0, 20 itens, ordenação por `corporateName`);
+- Repasse de `page`, `size` e `sort` informados na URL;
+- Limitação de `size` ao máximo de 100;
+- Resposta `400 Bad Request` para ordenação não permitida, sem reproduzir o valor rejeitado;
 - Serialização do `ClientResponse`;
 - Utilização de `ProblemDetail` e `application/problem+json` nos erros;
 - Título e detalhe públicos do erro 404;
@@ -620,8 +721,9 @@ target/
 - [x] ClientController;
 - [x] Endpoint POST /api/clients;
 - [x] Endpoint GET /api/clients/{id};
+- [x] Endpoint GET /api/clients com paginação e ordenação;
 - [x] ClientNotFoundException;
-- [x] Tratamento HTTP de erros de negócio (409 e 404);
+- [x] Tratamento HTTP de erros de negócio (409, 404 e 400 para ordenação);
 - [x] Tratamento HTTP de erros de validação;
 - [x] Testes unitários do Service;
 - [x] Testes HTTP do Controller;
@@ -630,7 +732,7 @@ target/
 
 ### Próximas melhorias do domínio Client
 
-- [ ] Listagem de clientes;
+- [ ] Filtros na listagem de clientes (ex.: por status);
 - [ ] Atualização de clientes;
 - [ ] Desativação de clientes;
 - [ ] Validação matemática do CNPJ;

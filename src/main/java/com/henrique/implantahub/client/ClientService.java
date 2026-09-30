@@ -1,11 +1,25 @@
 
 package com.henrique.implantahub.client;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 public class ClientService {
+
+    static final List<String> SORTABLE_PROPERTIES = List.of(
+            "id",
+            "corporateName",
+            "tradeName",
+            "createdAt",
+            "updatedAt"
+    );
 
     private final ClientRepository clientRepository;
 
@@ -39,6 +53,41 @@ public class ClientService {
                 .orElseThrow(() -> new ClientNotFoundException(id));
 
         return toResponse(client);
+    }
+
+    @Transactional(readOnly = true)
+    public ClientPageResponse findAll(Pageable pageable) {
+        validateSort(pageable.getSort());
+
+        Page<ClientResponse> page = clientRepository
+                .findAll(withIdTiebreaker(pageable))
+                .map(this::toResponse);
+
+        return ClientPageResponse.from(page);
+    }
+
+    private void validateSort(Sort sort) {
+        for (Sort.Order order : sort) {
+            if (!SORTABLE_PROPERTIES.contains(order.getProperty())) {
+                throw new InvalidClientSortException(order.getProperty());
+            }
+        }
+    }
+
+    // Garante uma ordem determinística entre páginas quando o campo
+    // ordenado possui valores repetidos (ex.: mesma razão social).
+    private Pageable withIdTiebreaker(Pageable pageable) {
+        Sort sort = pageable.getSort();
+
+        if (sort.getOrderFor("id") != null) {
+            return pageable;
+        }
+
+        return PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                sort.and(Sort.by("id"))
+        );
     }
 
     private ClientResponse toResponse(Client client) {
