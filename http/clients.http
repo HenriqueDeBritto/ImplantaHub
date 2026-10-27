@@ -65,3 +65,21 @@ Accept: application/json
 ### Listar clientes com ordenação não permitida (espera 400)
 GET http://localhost:8080/api/clients?sort=cnpj
 Accept: application/json
+
+###
+
+### Listar apenas clientes ativos
+GET http://localhost:8080/api/clients?status=ACTIVE
+Accept: application/json
+
+###
+
+### Listar clientes inativos com paginação e ordenação
+GET http://localhost:8080/api/clients?status=INACTIVE&page=0&size=10&sort=updatedAt,desc
+Accept: application/json
+
+###
+
+### Listar clientes com status inválido (espera 400)
+GET http://localhost:8080/api/clients?status=SUSPENDED
+Accept: application/json
