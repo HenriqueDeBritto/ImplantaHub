@@ -7,8 +7,10 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +54,34 @@ public class ClientExceptionHandler {
                 "allowedSortProperties",
                 ClientService.SORTABLE_PROPERTIES
         );
+
+        return problemDetail;
+    }
+
+    // Valores que não podem ser convertidos para o tipo esperado
+    // (ex.: status=FOO ou /api/clients/abc). Sem este handler, o Spring
+    // responderia com seu corpo de erro padrão, fora do formato ProblemDetail.
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ProblemDetail handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex
+    ) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.BAD_REQUEST,
+                "Parameter '" + ex.getName() + "' has an invalid value."
+        );
+
+        problemDetail.setTitle("Invalid Parameter");
+
+        Class<?> requiredType = ex.getRequiredType();
+
+        if (requiredType != null && requiredType.isEnum()) {
+            problemDetail.setProperty(
+                    "allowedValues",
+                    Arrays.stream(requiredType.getEnumConstants())
+                            .map(Object::toString)
+                            .toList()
+            );
+        }
 
         return problemDetail;
     }

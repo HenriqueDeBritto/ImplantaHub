@@ -363,6 +363,41 @@ class ClientControllerTest {
                 .isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
+    @Test
+    void deveRetornar400QuandoStatusForInvalido() throws Exception {
+        mockMvc.perform(get("/api/clients").param("status", "SUSPENDED"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Invalid Parameter"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Parameter 'status' has an invalid value."
+                ))
+                .andExpect(jsonPath("$.allowedValues[0]").value("ACTIVE"))
+                .andExpect(jsonPath("$.allowedValues[1]").value("INACTIVE"))
+                .andExpect(content().string(not(containsString("SUSPENDED"))));
+
+        verifyNoInteractions(clientService);
+    }
+
+    @Test
+    void deveRetornar400QuandoIdNaoForNumerico() throws Exception {
+        mockMvc.perform(get("/api/clients/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title").value("Invalid Parameter"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Parameter 'id' has an invalid value."
+                ))
+                .andExpect(jsonPath("$.allowedValues").doesNotExist());
+
+        verifyNoInteractions(clientService);
+    }
+
     private ClientPageResponse emptyPage() {
         return new ClientPageResponse(List.of(), 0, 20, 0, 0, true, true);
     }
