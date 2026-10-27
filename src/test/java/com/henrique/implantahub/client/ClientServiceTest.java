@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -233,7 +234,7 @@ class ClientServiceTest {
                         5
                 ));
 
-        ClientPageResponse response = clientService.findAll(pageable);
+        ClientPageResponse response = clientService.findAll(null, pageable);
 
         assertThat(response.content())
                 .extracting(ClientResponse::corporateName)
@@ -268,6 +269,59 @@ class ClientServiceTest {
     }
 
     @Test
+    void deveFiltrarClientesPorStatusQuandoInformado() {
+        Pageable pageable =
+                PageRequest.of(0, 20, Sort.by("corporateName"));
+
+        Client inactive = new Client(
+                "Beta Software Ltda", "Beta", "22222222000122",
+                "contato@beta.com", null, ClientStatus.INACTIVE
+        );
+
+        when(clientRepository.findAllByStatus(
+                any(ClientStatus.class), any(Pageable.class)
+        )).thenAnswer(invocation -> new PageImpl<>(
+                List.of(inactive),
+                invocation.getArgument(1),
+                1
+        ));
+
+        ClientPageResponse response =
+                clientService.findAll(ClientStatus.INACTIVE, pageable);
+
+        assertThat(response.content())
+                .extracting(ClientResponse::status)
+                .containsExactly(ClientStatus.INACTIVE);
+
+        assertThat(response.totalElements()).isEqualTo(1);
+
+        ArgumentCaptor<Pageable> pageableCaptor =
+                ArgumentCaptor.forClass(Pageable.class);
+
+        verify(clientRepository).findAllByStatus(
+                eq(ClientStatus.INACTIVE),
+                pageableCaptor.capture()
+        );
+
+        // O critério de desempate também vale para a listagem filtrada.
+        assertThat(pageableCaptor.getValue().getSort())
+                .isEqualTo(Sort.by("corporateName").and(Sort.by("id")));
+
+        verifyNoMoreInteractions(clientRepository);
+    }
+
+    @Test
+    void deveValidarOrdenacaoAntesDeFiltrarPorStatus() {
+        Pageable pageable = PageRequest.of(0, 20, Sort.by("cnpj"));
+
+        assertThatThrownBy(() ->
+                clientService.findAll(ClientStatus.ACTIVE, pageable))
+                .isInstanceOf(InvalidClientSortException.class);
+
+        verifyNoInteractions(clientRepository);
+    }
+
+    @Test
     void naoDeveDuplicarOrdenacaoPorIdQuandoJaInformada() {
         Pageable pageable =
                 PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "id"));
@@ -275,7 +329,7 @@ class ClientServiceTest {
         when(clientRepository.findAll(any(Pageable.class)))
                 .thenReturn(Page.empty(pageable));
 
-        clientService.findAll(pageable);
+        clientService.findAll(null, pageable);
 
         ArgumentCaptor<Pageable> pageableCaptor =
                 ArgumentCaptor.forClass(Pageable.class);
@@ -292,7 +346,7 @@ class ClientServiceTest {
                 0, 20, Sort.by("corporateName", "cnpj")
         );
 
-        assertThatThrownBy(() -> clientService.findAll(pageable))
+        assertThatThrownBy(() -> clientService.findAll(null, pageable))
                 .isInstanceOf(InvalidClientSortException.class)
                 .hasMessageContaining("cnpj");
 
@@ -307,7 +361,7 @@ class ClientServiceTest {
                 .thenAnswer(invocation ->
                         Page.empty(invocation.getArgument(0)));
 
-        ClientPageResponse response = clientService.findAll(pageable);
+        ClientPageResponse response = clientService.findAll(null, pageable);
 
         assertThat(response.content()).isEmpty();
         assertThat(response.page()).isZero();

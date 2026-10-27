@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -36,10 +37,12 @@ public class ClientController {
 
     @GetMapping
     public ResponseEntity<ClientPageResponse> findAll(
+            @RequestParam(name = "status", required = false)
+            ClientStatus status,
             @PageableDefault(size = 20, sort = "corporateName")
             Pageable pageable
     ) {
-        ClientPageResponse response = clientService.findAll(pageable);
+        ClientPageResponse response = clientService.findAll(status, pageable);
 
         return ResponseEntity.ok(response);
     }
