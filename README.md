@@ -325,14 +325,15 @@ A resposta pública não reproduz a mensagem interna da exceção. O Spring pode
 
 ### Listagem paginada de clientes
 
-A API permite listar clientes de forma paginada e ordenada.
+A API permite listar clientes de forma paginada e ordenada, com filtro opcional por status.
 
 ```http
-GET /api/clients?page=0&size=20&sort=corporateName,asc
+GET /api/clients?status=ACTIVE&page=0&size=20&sort=corporateName,asc
 ```
 
 | Parâmetro | Padrão | Descrição |
 |---|---|---|
+| status | — | Filtra pelo status do cliente (`ACTIVE` ou `INACTIVE`); quando omitido, retorna clientes de todos os status |
 | page | `0` | Número da página, iniciando em zero |
 | size | `20` | Quantidade de itens por página; máximo de 100 |
 | sort | `corporateName,asc` | Campo e direção da ordenação; pode ser repetido |
@@ -342,6 +343,8 @@ O `Pageable` é resolvido pelo Spring Data a partir dos parâmetros da URL. Valo
 Campos aceitos em `sort`: `id`, `corporateName`, `tradeName`, `createdAt` e `updatedAt`.
 
 O `ClientService` acrescenta `id` como critério de desempate quando ele não foi informado. Assim, clientes com o mesmo valor no campo ordenado mantêm uma ordem estável entre as páginas.
+
+O valor de `status` é convertido diretamente para o enum `ClientStatus` e diferencia maiúsculas de minúsculas: `status=active` é rejeitado. Quando o filtro é informado, o `ClientService` delega a consulta a `ClientRepository.findAllByStatus`; caso contrário, utiliza `findAll`. A paginação, a ordenação e o critério de desempate se aplicam igualmente aos dois casos.
 
 #### Página retornada
 
@@ -402,6 +405,29 @@ Exemplo de resposta:
 ```
 
 O valor rejeitado não é reproduzido na resposta.
+
+#### Parâmetro inválido
+
+Quando um parâmetro não pode ser convertido para o tipo esperado, como `status=SUSPENDED` ou `GET /api/clients/abc`, o Spring lança `MethodArgumentTypeMismatchException`. O `ClientExceptionHandler` a traduz para:
+
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/problem+json
+```
+
+Exemplo de resposta:
+
+```json
+{
+  "title": "Invalid Parameter",
+  "status": 400,
+  "detail": "Parameter 'status' has an invalid value.",
+  "instance": "/api/clients",
+  "allowedValues": ["ACTIVE", "INACTIVE"]
+}
+```
+
+A propriedade `allowedValues` é incluída apenas quando o parâmetro é um enum. O valor rejeitado não é reproduzido na resposta. Sem esse tratamento, o Spring responderia com seu corpo de erro padrão, fora do formato `ProblemDetail` utilizado pelo restante da API.
 
 ## Banco de dados
 
@@ -538,7 +564,8 @@ Ele reúne exemplos de requisições para os endpoints de clientes, incluindo:
 2. Tentativa de cadastro com CNPJ duplicado;
 3. Requisição com dados inválidos;
 4. Consulta de cliente por ID;
-5. Listagem paginada, com ordenação válida e inválida.
+5. Listagem paginada, com ordenação válida e inválida;
+6. Listagem filtrada por status, com valor válido e inválido.
 
 No IntelliJ IDEA Ultimate, abra o arquivo e utilize os botões de execução ao lado de cada requisição.
 
@@ -553,6 +580,8 @@ Com a aplicação e o PostgreSQL em execução, os resultados esperados são:
 | Cliente inexistente | `GET /api/clients/{id}` | 404 Not Found |
 | Listagem paginada | `GET /api/clients` | 200 OK |
 | Ordenação não permitida | `GET /api/clients?sort=cnpj` | 400 Bad Request |
+| Filtro por status | `GET /api/clients?status=ACTIVE` | 200 OK |
+| Status inválido | `GET /api/clients?status=SUSPENDED` | 400 Bad Request |
 
 **Importante:** após executar o primeiro cadastro, repetir a mesma requisição com o mesmo CNPJ deverá retornar `409 Conflict`. Para repetir o cenário de criação bem-sucedida, utilize um CNPJ de 14 dígitos ainda não cadastrado no ambiente local. Para consultar um cliente, utilize o `id` retornado no cadastro.
 
@@ -597,7 +626,7 @@ Os testes específicos de `ClientService` e `ClientController` não acessam o Po
 
 ### Testes do ClientService
 
-A classe `ClientServiceTest` executa oito testes unitários isolados, utilizando um mock de `ClientRepository`.
+A classe `ClientServiceTest` executa dez testes unitários isolados, utilizando um mock de `ClientRepository`.
 
 Os cenários implementados verificam:
 
@@ -613,13 +642,15 @@ Os cenários implementados verificam:
 - Listagem paginada com conversão para `ClientResponse` e metadados da página;
 - Inclusão de `id` como critério de desempate, sem duplicá-lo quando já informado;
 - Lançamento de `InvalidClientSortException` para campos de ordenação não permitidos, sem consultar o Repository;
+- Filtro por status delegado a `findAllByStatus`, preservando o critério de desempate por `id`;
+- Validação da ordenação antes da consulta filtrada por status;
 - Retorno de página vazia quando não existem clientes.
 
 Como o Service é instanciado diretamente pelo Mockito, sem proxy do Spring, esses testes não comprovam o comportamento transacional de `@Transactional(readOnly = true)`.
 
 ### Testes do ClientController
 
-A classe `ClientControllerTest` executa dez testes HTTP, utilizando `@WebMvcTest`, MockMvc e um mock do `ClientService`.
+A classe `ClientControllerTest` executa quatorze testes HTTP, utilizando `@WebMvcTest`, MockMvc e um mock do `ClientService`.
 
 Os cenários implementados verificam:
 
@@ -633,6 +664,9 @@ Os cenários implementados verificam:
 - Repasse de `page`, `size` e `sort` informados na URL;
 - Limitação de `size` ao máximo de 100;
 - Resposta `400 Bad Request` para ordenação não permitida, sem reproduzir o valor rejeitado;
+- Repasse do filtro `status` ao Service, e de `null` quando ele não é informado;
+- Resposta `400 Bad Request` para status inválido, com os valores aceitos e sem reproduzir o valor rejeitado;
+- Resposta `400 Bad Request` em `ProblemDetail` para ID não numérico;
 - Serialização do `ClientResponse`;
 - Utilização de `ProblemDetail` e `application/problem+json` nos erros;
 - Título e detalhe públicos do erro 404;
@@ -722,8 +756,10 @@ target/
 - [x] Endpoint POST /api/clients;
 - [x] Endpoint GET /api/clients/{id};
 - [x] Endpoint GET /api/clients com paginação e ordenação;
+- [x] Filtro por status na listagem de clientes;
 - [x] ClientNotFoundException;
 - [x] Tratamento HTTP de erros de negócio (409, 404 e 400 para ordenação);
+- [x] Tratamento HTTP de parâmetros inválidos (status e ID);
 - [x] Tratamento HTTP de erros de validação;
 - [x] Testes unitários do Service;
 - [x] Testes HTTP do Controller;
@@ -732,7 +768,7 @@ target/
 
 ### Próximas melhorias do domínio Client
 
-- [ ] Filtros na listagem de clientes (ex.: por status);
+- [ ] Outros filtros na listagem de clientes (ex.: por razão social ou CNPJ);
 - [ ] Atualização de clientes;
 - [ ] Desativação de clientes;
 - [ ] Validação matemática do CNPJ;

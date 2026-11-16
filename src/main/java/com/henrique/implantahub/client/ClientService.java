@@ -56,14 +56,17 @@ public class ClientService {
     }
 
     @Transactional(readOnly = true)
-    public ClientPageResponse findAll(Pageable pageable) {
+    public ClientPageResponse findAll(ClientStatus status, Pageable pageable) {
         validateSort(pageable.getSort());
 
-        Page<ClientResponse> page = clientRepository
-                .findAll(withIdTiebreaker(pageable))
-                .map(this::toResponse);
+        Pageable stablePageable = withIdTiebreaker(pageable);
 
-        return ClientPageResponse.from(page);
+        // Sem status informado, a listagem retorna clientes de todos os status.
+        Page<Client> clients = status == null
+                ? clientRepository.findAll(stablePageable)
+                : clientRepository.findAllByStatus(status, stablePageable);
+
+        return ClientPageResponse.from(clients.map(this::toResponse));
     }
 
     private void validateSort(Sort sort) {

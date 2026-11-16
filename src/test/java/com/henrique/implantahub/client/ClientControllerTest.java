@@ -18,6 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -243,7 +245,7 @@ class ClientControllerTest {
                 now
         );
 
-        when(clientService.findAll(any(Pageable.class)))
+        when(clientService.findAll(any(), any(Pageable.class)))
                 .thenReturn(new ClientPageResponse(
                         List.of(client), 0, 20, 1, 1, true, true
                 ));
@@ -269,7 +271,7 @@ class ClientControllerTest {
     @Test
     void deveAplicarPaginacaoPadraoQuandoParametrosNaoForemInformados()
             throws Exception {
-        when(clientService.findAll(any(Pageable.class)))
+        when(clientService.findAll(any(), any(Pageable.class)))
                 .thenReturn(emptyPage());
 
         mockMvc.perform(get("/api/clients"))
@@ -285,7 +287,7 @@ class ClientControllerTest {
 
     @Test
     void deveRepassarParametrosDePaginacaoInformados() throws Exception {
-        when(clientService.findAll(any(Pageable.class)))
+        when(clientService.findAll(any(), any(Pageable.class)))
                 .thenReturn(emptyPage());
 
         mockMvc.perform(get("/api/clients")
@@ -304,7 +306,7 @@ class ClientControllerTest {
 
     @Test
     void deveLimitarTamanhoDaPaginaAoMaximoConfigurado() throws Exception {
-        when(clientService.findAll(any(Pageable.class)))
+        when(clientService.findAll(any(), any(Pageable.class)))
                 .thenReturn(emptyPage());
 
         mockMvc.perform(get("/api/clients").param("size", "500"))
@@ -315,7 +317,7 @@ class ClientControllerTest {
 
     @Test
     void deveRetornar400QuandoOrdenacaoNaoForPermitida() throws Exception {
-        when(clientService.findAll(any(Pageable.class)))
+        when(clientService.findAll(any(), any(Pageable.class)))
                 .thenThrow(new InvalidClientSortException("cnpj"));
 
         mockMvc.perform(get("/api/clients").param("sort", "cnpj"))
@@ -332,6 +334,70 @@ class ClientControllerTest {
                 .andExpect(content().string(not(containsString("cnpj"))));
     }
 
+    @Test
+    void deveRepassarStatusNuloQuandoFiltroNaoForInformado() throws Exception {
+        when(clientService.findAll(any(), any(Pageable.class)))
+                .thenReturn(emptyPage());
+
+        mockMvc.perform(get("/api/clients"))
+                .andExpect(status().isOk());
+
+        verify(clientService, times(1))
+                .findAll(isNull(), any(Pageable.class));
+    }
+
+    @Test
+    void deveRepassarFiltroDeStatusInformado() throws Exception {
+        when(clientService.findAll(any(), any(Pageable.class)))
+                .thenReturn(emptyPage());
+
+        mockMvc.perform(get("/api/clients")
+                        .param("status", "INACTIVE")
+                        .param("sort", "createdAt,desc"))
+                .andExpect(status().isOk());
+
+        verify(clientService, times(1))
+                .findAll(eq(ClientStatus.INACTIVE), any(Pageable.class));
+
+        assertThat(capturePageable().getSort())
+                .isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    @Test
+    void deveRetornar400QuandoStatusForInvalido() throws Exception {
+        mockMvc.perform(get("/api/clients").param("status", "SUSPENDED"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.title").value("Invalid Parameter"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Parameter 'status' has an invalid value."
+                ))
+                .andExpect(jsonPath("$.allowedValues[0]").value("ACTIVE"))
+                .andExpect(jsonPath("$.allowedValues[1]").value("INACTIVE"))
+                .andExpect(content().string(not(containsString("SUSPENDED"))));
+
+        verifyNoInteractions(clientService);
+    }
+
+    @Test
+    void deveRetornar400QuandoIdNaoForNumerico() throws Exception {
+        mockMvc.perform(get("/api/clients/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_PROBLEM_JSON
+                ))
+                .andExpect(jsonPath("$.title").value("Invalid Parameter"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Parameter 'id' has an invalid value."
+                ))
+                .andExpect(jsonPath("$.allowedValues").doesNotExist());
+
+        verifyNoInteractions(clientService);
+    }
+
     private ClientPageResponse emptyPage() {
         return new ClientPageResponse(List.of(), 0, 20, 0, 0, true, true);
     }
@@ -341,7 +407,7 @@ class ClientControllerTest {
                 ArgumentCaptor.forClass(Pageable.class);
 
         verify(clientService, times(1))
-                .findAll(pageableCaptor.capture());
+                .findAll(any(), pageableCaptor.capture());
 
         return pageableCaptor.getValue();
     }
